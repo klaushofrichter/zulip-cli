@@ -85,7 +85,6 @@ Branch protection on `release` enforces: PR required, no force-push, no deletion
 
 Runs on:
 - `pull_request` targeting `release` (required check),
-- `push` to `main`,
 - manual `workflow_dispatch`.
 
 The job `read-only-tests` exercises the CLI against the configured Zulip server using repository secrets. It calls only **read-only** endpoints:
