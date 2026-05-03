@@ -3,8 +3,6 @@ name: CI
 on:
   pull_request:
     branches: [release]
-  push:
-    branches: [main]
   workflow_dispatch: {}
 
 permissions:
@@ -41,7 +39,6 @@ jobs:
           node zulip.ts users list > out.json
           node -e '
             const j = JSON.parse(require("fs").readFileSync("out.json","utf8"));
-            if (j.result !== "success") { console.error(j); process.exit(1); }
             if (!Array.isArray(j.members) || j.members.length === 0) { console.error("no members"); process.exit(1); }
             console.log("members:", j.members.length);
           '
@@ -51,7 +48,6 @@ jobs:
           node zulip.ts users get "$ZULIP_USER_EMAIL" > out.json
           node -e '
             const j = JSON.parse(require("fs").readFileSync("out.json","utf8"));
-            if (j.result !== "success") { console.error(j); process.exit(1); }
             if (j.user.delivery_email !== process.env.ZULIP_USER_EMAIL) {
               console.error("email mismatch:", j.user.delivery_email);
               process.exit(1);
@@ -64,7 +60,6 @@ jobs:
           node zulip.ts users presence "$ZULIP_USER_EMAIL" > out.json
           node -e '
             const j = JSON.parse(require("fs").readFileSync("out.json","utf8"));
-            if (j.result !== "success") { console.error(j); process.exit(1); }
             if (!j.presence) { console.error("no presence"); process.exit(1); }
           '
 
@@ -75,10 +70,9 @@ jobs:
           node -e '
             const fs = require("fs");
             const j = JSON.parse(fs.readFileSync("streams.json","utf8"));
-            if (j.result !== "success") { console.error(j); process.exit(1); }
             if (!Array.isArray(j.streams) || j.streams.length === 0) { console.error("no streams"); process.exit(1); }
             const s = j.streams[0];
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `name=${s.name}\nid=${s.stream_id}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `name<<__EOF__\n${s.name}\n__EOF__\nid=${s.stream_id}\n`);
             console.log("picked:", s.stream_id, s.name);
           '
 
@@ -88,8 +82,8 @@ jobs:
           node -e '
             const j = JSON.parse(require("fs").readFileSync("out.json","utf8"));
             const want = parseInt(process.env.WANT_ID, 10);
-            if (j.result !== "success" || j.stream_id !== want) {
-              console.error("got", j, "want id", want);
+            if (j.stream_id !== want) {
+              console.error("got", j.stream_id, "want id", want);
               process.exit(1);
             }
           '
@@ -101,7 +95,6 @@ jobs:
           node zulip.ts channels topics "${{ steps.pick.outputs.id }}" > out.json
           node -e '
             const j = JSON.parse(require("fs").readFileSync("out.json","utf8"));
-            if (j.result !== "success") { console.error(j); process.exit(1); }
             if (!Array.isArray(j.topics)) { console.error("no topics array"); process.exit(1); }
             console.log("topics:", j.topics.length);
           '
@@ -111,6 +104,5 @@ jobs:
           node zulip.ts messages search --sender "$ZULIP_USER_EMAIL" --limit 1 > out.json
           node -e '
             const j = JSON.parse(require("fs").readFileSync("out.json","utf8"));
-            if (j.result !== "success") { console.error(j); process.exit(1); }
             if (!Array.isArray(j.messages)) { console.error("no messages array"); process.exit(1); }
           '

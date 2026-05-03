@@ -1,27 +1,37 @@
 #!/usr/bin/env -S node --no-warnings
 import { parseArgs } from "node:util";
-import { readFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { openAsBlob } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 type Json = unknown;
 
 function loadDotenv(): void {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const path = join(here, ".env");
-  if (!existsSync(path)) return;
-  for (const raw of readFileSync(path, "utf8").split("\n")) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq === -1) continue;
-    const k = line.slice(0, eq).trim();
-    let v = line.slice(eq + 1).trim();
-    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-      v = v.slice(1, -1);
-    }
-    if (!(k in process.env)) process.env[k] = v;
+  const path = join(dirname(fileURLToPath(import.meta.url)), ".env");
+  try {
+    process.loadEnvFile(path);
+  } catch {
+    // No .env present is fine — credentials may come from the real environment.
   }
+}
+
+function checkNodeVersion(): void {
+  const [maj, min] = process.versions.node.split(".").map(Number);
+  if (maj < 23 || (maj === 23 && min < 6)) {
+    die(`Node ${process.versions.node} too old; this CLI runs .ts directly and needs Node >=23.6`);
+  }
+}
+
+const isNumericId = (s: string): boolean => /^\d+$/.test(s);
+
+function userPath(who: string, suffix = ""): string {
+  return `/users/${isNumericId(who) ? who : encodeURIComponent(who)}${suffix}`;
+}
+
+function intArg(raw: string, label: string, min = 0): number {
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < min) die(`${label} must be an integer >= ${min}`);
+  return n;
 }
 
 interface Config {
@@ -72,13 +82,16 @@ async function api(
 }
 
 async function apiUpload(path: string, filePath: string): Promise<Json> {
-  if (!existsSync(filePath)) die(`file not found: ${filePath}`);
+  let blob: Blob;
+  try {
+    blob = await openAsBlob(filePath);
+  } catch (e) {
+    die(`cannot read ${filePath}: ${(e as Error).message}`);
+  }
   const c = getConfig();
   const url = new URL(c.domain + "/api/v1" + path);
-  const buf = readFileSync(filePath);
   const fd = new FormData();
-  const filename = filePath.split("/").pop() || "upload";
-  fd.set("file", new Blob([new Uint8Array(buf)]), filename);
+  fd.set("file", blob, basename(filePath) || "upload");
   const res = await fetch(url, {
     method: "POST",
     headers: { Authorization: authHeader(c) },
@@ -115,20 +128,20 @@ const HELP = `zulip — Zulip CLI for Claude
 Usage: zulip <group> <command> [options]
 
 channels
-  list                              List streams
-    --include-private               Include private streams
-    --no-web-public                 Exclude web-public streams
-    --no-subscribed                 Exclude subscribed streams
-  subscribe <channel-name>          Subscribe to a stream
-  topics <channel-id>               List topics in a stream
-  resolve <channel-name>            Resolve a stream name to its id
+  list                              List channels (a.k.a. streams)
+    --include-private               Include private channels
+    --no-web-public                 Exclude web-public channels
+    --no-subscribed                 Exclude subscribed channels
+  subscribe <channel-name>          Subscribe to a channel
+  topics <channel-id>               List topics in a channel
+  resolve <channel-name>            Resolve a channel name to its id
 
 messages
-  send <channel> <topic> --content <text>          Post to a stream/topic
+  send <channel> <topic> --content <text>          Post to a channel/topic
   dm --to <email,email,...> --content <text>       Send a direct message
   history <channel> <topic> [--limit N] [--anchor X]   Recent messages
   react <message-id> <emoji-name>                  Add an emoji reaction
-  upload <file>                                    Upload a file; returns {uri, url}
+  upload <file>                                    Upload a file; returns {uri, url, filename}
   search [--channel C] [--topic T] [--sender S]
          [--text TXT] [--has link|image|attachment|reaction]
          [--is private|mentioned|starred|unread|resolved]
@@ -149,18 +162,18 @@ Reads ZULIP_DOMAIN, ZULIP_USER_EMAIL, ZULIP_USER_API_KEY from .env (next to this
 `;
 
 async function main(): Promise<void> {
+  checkNodeVersion();
   loadDotenv();
   const argv = process.argv.slice(2);
   if (argv.length === 0 || argv[0] === "-h" || argv[0] === "--help") {
     process.stdout.write(HELP);
-    process.exit(argv.length === 0 ? 1 : 0);
+    process.exit(0);
   }
 
   const group = argv[0];
   const cmd = argv[1];
   const rest = argv.slice(2);
 
-  // Pull --pretty out of anywhere
   const prettyIdx = rest.indexOf("--pretty");
   const pretty = prettyIdx !== -1;
   if (pretty) rest.splice(prettyIdx, 1);
@@ -198,7 +211,7 @@ async function main(): Promise<void> {
   if (group === "channels" && cmd === "topics") {
     const id = rest[0];
     if (!id) die("channels topics: missing <channel-id>");
-    if (!/^\d+$/.test(id)) die("channels topics: <channel-id> must be numeric");
+    if (!isNumericId(id)) die("channels topics: <channel-id> must be numeric");
     const data = await api("GET", `/users/me/${id}/topics`);
     out(data, pretty);
     return;
@@ -262,8 +275,7 @@ async function main(): Promise<void> {
       },
       strict: true,
     });
-    const limit = parseInt(values.limit!, 10);
-    if (!Number.isFinite(limit) || limit < 1) die("messages history: --limit must be a positive integer");
+    const limit = intArg(values.limit!, "messages history: --limit", 1);
     const narrow = JSON.stringify([
       { operator: "stream", operand: channel },
       { operator: "topic", operand: topic },
@@ -282,7 +294,7 @@ async function main(): Promise<void> {
   if (group === "messages" && cmd === "react") {
     const [id, emoji] = rest;
     if (!id || !emoji) die("messages react: missing <message-id> <emoji-name>");
-    if (!/^\d+$/.test(id)) die("messages react: <message-id> must be numeric");
+    if (!isNumericId(id)) die("messages react: <message-id> must be numeric");
     const data = await api("POST", `/messages/${id}/reactions`, { emoji_name: emoji });
     out(data, pretty);
     return;
@@ -320,10 +332,8 @@ async function main(): Promise<void> {
     for (const h of (values.has as string[] | undefined) ?? []) narrow.push({ operator: "has", operand: h });
     for (const i of (values.is as string[] | undefined) ?? []) narrow.push({ operator: "is", operand: i });
     if (narrow.length === 0) die("messages search: provide at least one of --channel/--topic/--sender/--text/--has/--is");
-    const limit = parseInt(values.limit!, 10);
-    const numAfter = parseInt(values["num-after"]!, 10);
-    if (!Number.isFinite(limit) || limit < 0) die("messages search: --limit must be a non-negative integer");
-    if (!Number.isFinite(numAfter) || numAfter < 0) die("messages search: --num-after must be a non-negative integer");
+    const limit = intArg(values.limit!, "messages search: --limit");
+    const numAfter = intArg(values["num-after"]!, "messages search: --num-after");
     const data = await api("GET", "/messages", {
       narrow: JSON.stringify(narrow),
       anchor: values.anchor,
@@ -344,8 +354,7 @@ async function main(): Promise<void> {
   if (group === "users" && cmd === "get") {
     const who = rest[0];
     if (!who) die("users get: missing <email|user-id>");
-    const path = /^\d+$/.test(who) ? `/users/${who}` : `/users/${encodeURIComponent(who)}`;
-    const data = await api("GET", path);
+    const data = await api("GET", userPath(who));
     out(data, pretty);
     return;
   }
@@ -385,10 +394,7 @@ async function main(): Promise<void> {
 
   if (group === "users" && cmd === "presence") {
     const who = rest[0];
-    const path = who
-      ? (/^\d+$/.test(who) ? `/users/${who}/presence` : `/users/${encodeURIComponent(who)}/presence`)
-      : "/realm/presence";
-    const data = await api("GET", path);
+    const data = await api("GET", who ? userPath(who, "/presence") : "/realm/presence");
     out(data, pretty);
     return;
   }
@@ -396,4 +402,7 @@ async function main(): Promise<void> {
   die(`unknown command: ${[group, cmd].filter(Boolean).join(" ")}\n\n${HELP}`);
 }
 
-main().catch((e) => die(e instanceof Error ? e.message : String(e)));
+main().catch((e) => {
+  if (process.env.DEBUG) console.error(e);
+  die(e instanceof Error ? e.message : String(e));
+});

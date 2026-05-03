@@ -9,7 +9,8 @@
   "files": [
     "zulip.ts",
     "SKILL.md",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=23.6"
@@ -18,6 +19,6 @@
     "type": "git",
     "url": "git+https://github.com/klaushofrichter/zulip-cli.git"
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": false
 }
