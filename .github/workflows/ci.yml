@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Force checkout/setup-node off the deprecated Node 20 action runtime.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   read-only-tests:
     name: read-only-tests

@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+env:
+  # Force checkout/setup-node off the deprecated Node 20 action runtime.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   package:
     runs-on: ubuntu-latest
