@@ -123,7 +123,67 @@ zulip users presence
 
 - `zulip.ts` — single-file CLI, runnable directly with `node`.
 - `SKILL.md` — agent-facing skill description (frontmatter + commands + recipes).
+- `scripts/sync-secrets.sh` — push `.env` values up to GitHub Actions secrets.
+- `.github/workflows/ci.yml` — read-only smoke tests on PRs to `release`.
+- `.github/workflows/release.yml` — build a tarball release on push to `release`.
 - `.env` — credentials (gitignored).
+
+## CI / release pipeline
+
+The repository uses two workflows and a protected `release` branch.
+
+### Branches
+
+- `main` — active development. CI runs on every push.
+- `release` — protected. Direct pushes are blocked; merges happen via pull request and require the read-only CI to pass. Pushing to `release` triggers a packaged release.
+
+Branch protection on `release` enforces: PR required, no force-push, no deletion, and the `read-only-tests` status check must pass.
+
+### `ci.yml` — read-only smoke tests
+
+Runs on:
+- `pull_request` targeting `release` (required check),
+- `push` to `main`,
+- manual `workflow_dispatch`.
+
+The job `read-only-tests` exercises the CLI against the configured Zulip server using repository secrets. It calls only **read-only** endpoints:
+
+- `users list`, `users get <self>`, `users presence <self>`
+- `channels list`, `channels resolve <name>`, `channels topics <id>`
+- `messages search --sender <self> --limit 1`
+
+**Limitations:**
+
+- **Read-only by design.** No tests cover write operations (`messages send`, `messages dm`, `messages react`, `messages upload`, `channels subscribe`, `users status`). Those endpoints would either post visible messages, modify your status, or change subscription state on the live server, so they are not exercised in CI. Verify them manually before merging changes that touch those code paths.
+- The CI uses **real credentials** against a real Zulip server (the one whose secrets are uploaded). It is not hermetic; if the server is unreachable or credentials are revoked, the workflow fails.
+- Tests assume the configured user has at least one accessible stream and at least one message they have sent. On a brand-new account these may produce empty results and a couple of assertions may need relaxing.
+- Secrets are not exposed to PRs from forks (GitHub default), so external contributors' PRs will fail the read-only checks until the maintainer re-runs the workflow from the base repo.
+
+### `release.yml` — build a packaged release
+
+Runs on push to `release` (i.e., after a merge) and on manual dispatch. Steps:
+
+1. Smoke-test that `node zulip.ts --help` exits cleanly.
+2. `npm pack` to produce a tarball of the files listed in `package.json` (`zulip.ts`, `SKILL.md`, `README.md`).
+3. Create a GitHub Release tagged `v<version>-<UTC-timestamp>-<short-sha>` with the tarball attached.
+
+Releases appear on the repository's Releases page. There is no npm-registry publish step — the artifact is the GitHub Release tarball.
+
+### Uploading credentials to GitHub — `scripts/sync-secrets.sh`
+
+The CI workflow reads `ZULIP_DOMAIN`, `ZULIP_USER_EMAIL`, and `ZULIP_USER_API_KEY` from repository secrets. Use the helper script to push them from your local `.env`:
+
+```bash
+scripts/sync-secrets.sh --dry-run     # preview without writing
+scripts/sync-secrets.sh               # actually push
+scripts/sync-secrets.sh --repo OWNER/NAME --env path/to/.env
+```
+
+The script reads `KEY=VALUE` pairs from `.env`, strips matching surrounding quotes, validates the key shape, and pipes the value to `gh secret set <KEY>`. Comments and blank lines are ignored.
+
+Requirements: `gh` CLI authenticated with `repo` scope. After running, verify with `gh secret list`.
+
+**Caveat:** rerun this whenever you rotate your Zulip API key or change the domain. Stale secrets are the most common reason CI breaks.
 
 ## Use as a Claude skill
 
