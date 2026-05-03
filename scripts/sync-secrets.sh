@@ -76,7 +76,7 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
     [[ ${#val} -gt 0 ]] && masked="**** (${#val} chars)"
     echo "[dry-run] would set $key=$masked"
   else
-    printf '%s' "$val" | gh secret set "$key" --body - "${REPO_FLAG[@]}"
+    printf '%s' "$val" | gh secret set "$key" "${REPO_FLAG[@]}"
     echo "set: $key"
   fi
   count=$((count + 1))
