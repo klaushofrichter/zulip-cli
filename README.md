@@ -196,6 +196,54 @@ Requirements: `gh` CLI authenticated with `repo` scope. After running, verify wi
 - DM recipients are comma-separated emails (or numeric user ids).
 - Posting and reacting are user-visible, hard-to-reverse actions — confirm with the user before sending.
 
+## Coverage and known gaps
+
+This CLI exposes a useful but **deliberately small** slice of the Zulip REST API. Many endpoints are not yet wrapped. If you need one that is missing, either call the Zulip API directly with `curl` (using the same `.env` credentials and HTTP Basic auth) or open an issue / PR.
+
+Reference: <https://zulip.com/api/>.
+
+### Not currently supported
+
+**Messages**
+- `PATCH /messages/{id}` — edit a message, move topics, mark resolved
+- `DELETE /messages/{id}` — delete a message
+- `GET /messages/{id}` — fetch a single message
+- `GET /messages/{id}/history` — edit history
+- `POST /messages/flags` — mark read/unread, star/unstar
+- `DELETE /messages/{id}/reactions` — remove a reaction (only adding is supported)
+- `POST /messages/render` — render Markdown without sending
+
+**Channels (streams)**
+- `GET /streams/{id}` — single stream details
+- `POST /streams/{id}` — update name, description, permissions
+- `DELETE /streams/{id}` — archive
+- `GET /streams/{id}/members` — list subscribers
+- `DELETE /users/me/subscriptions` — unsubscribe
+- `PATCH /users/me/subscriptions/properties` — mute, pin, change color or notification settings
+
+**Topics**
+- `POST /user_topics` (and legacy `/users/me/subscriptions/muted_topics`) — mute, unmute, mark resolved
+- `POST /mark_topic_as_read`, `/mark_stream_as_read`, `/mark_all_as_read`
+- `DELETE /streams/{id}/delete_topic`
+
+**Users / groups**
+- `GET /users/me` — current user
+- `GET /user_groups` plus create / update / membership endpoints
+
+**Drafts and scheduled messages**
+- `GET/POST/PATCH/DELETE /drafts`
+- `GET/POST/PATCH/DELETE /scheduled_messages`
+
+**Realtime / event queue**
+- `POST /register` and `GET /events` — long-polling for new messages. Inherently stateful and out of scope for a one-shot CLI.
+
+**Realm metadata**
+- `GET /realm/emoji`
+- `GET /realm/linkifiers`
+- `GET /server_settings`
+
+This list is not exhaustive. See the upstream API reference for the full surface.
+
 ## License
 
 No license declared. Add one before publishing.
