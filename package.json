@@ -1,0 +1,23 @@
+{
+  "name": "zulip-cli",
+  "version": "0.1.0",
+  "description": "Zulip CLI for Claude — JSON-output TypeScript CLI with a SKILL.md for agent use.",
+  "type": "module",
+  "bin": {
+    "zulip": "./zulip.ts"
+  },
+  "files": [
+    "zulip.ts",
+    "SKILL.md",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=23.6"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/klaushofrichter/zulip-cli.git"
+  },
+  "license": "UNLICENSED",
+  "private": false
+}
