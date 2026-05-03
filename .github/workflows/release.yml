@@ -8,11 +8,17 @@ on:
 permissions:
   contents: write
 
+env:
+  # Force checkout/setup-node off the deprecated Node 20 action runtime.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   package:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need full history to diff against the previous release tag
 
       - uses: actions/setup-node@v4
         with:
@@ -29,6 +35,32 @@ jobs:
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
           ls -lh "$TARBALL"
 
+      - name: Build release notes
+        id: notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PREV=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || true)
+          if [ -n "$PREV" ] && git rev-parse -q --verify "refs/tags/$PREV" >/dev/null; then
+            RANGE="$PREV..$GITHUB_SHA"
+            HEADER="## Changes since [\`$PREV\`](../../releases/tag/$PREV)"
+          else
+            RANGE="$GITHUB_SHA"
+            HEADER="## Initial release"
+          fi
+          {
+            echo "Automated release from \`release\` at commit \`${GITHUB_SHA::7}\`."
+            echo
+            echo "$HEADER"
+            echo
+            git log --no-merges --pretty=format:"- %s (\`%h\`)" "$RANGE" || true
+            echo
+          } > release-notes.md
+          echo "---" >> release-notes.md
+          echo "Tarball: \`$(basename "${{ steps.pack.outputs.tarball }}")\`" >> release-notes.md
+          cat release-notes.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -38,5 +70,5 @@ jobs:
           TAG="v${VERSION}-$(date -u +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
           gh release create "$TAG" "${{ steps.pack.outputs.tarball }}" \
             --title "$TAG" \
-            --notes "Automated release from \`release\` branch (commit ${GITHUB_SHA})." \
+            --notes-file release-notes.md \
             --target "$GITHUB_SHA"
