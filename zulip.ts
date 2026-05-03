@@ -1,6 +1,6 @@
 #!/usr/bin/env -S node --no-warnings
 import { parseArgs } from "node:util";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, openAsBlob } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -72,13 +72,16 @@ async function api(
 }
 
 async function apiUpload(path: string, filePath: string): Promise<Json> {
-  if (!existsSync(filePath)) die(`file not found: ${filePath}`);
+  let blob: Blob;
+  try {
+    blob = await openAsBlob(filePath);
+  } catch (e) {
+    die(`cannot read ${filePath}: ${(e as Error).message}`);
+  }
   const c = getConfig();
   const url = new URL(c.domain + "/api/v1" + path);
-  const buf = readFileSync(filePath);
   const fd = new FormData();
-  const filename = filePath.split("/").pop() || "upload";
-  fd.set("file", new Blob([new Uint8Array(buf)]), filename);
+  fd.set("file", blob, filePath.split("/").pop() || "upload");
   const res = await fetch(url, {
     method: "POST",
     headers: { Authorization: authHeader(c) },
@@ -153,14 +156,13 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv.length === 0 || argv[0] === "-h" || argv[0] === "--help") {
     process.stdout.write(HELP);
-    process.exit(argv.length === 0 ? 1 : 0);
+    process.exit(0);
   }
 
   const group = argv[0];
   const cmd = argv[1];
   const rest = argv.slice(2);
 
-  // Pull --pretty out of anywhere
   const prettyIdx = rest.indexOf("--pretty");
   const pretty = prettyIdx !== -1;
   if (pretty) rest.splice(prettyIdx, 1);

@@ -5,10 +5,7 @@
 #
 # Defaults: --repo is the repo of the current working tree (gh resolves it),
 #           --env is .env at the repo root.
-# Requirements: gh CLI authenticated with `repo` scope; jq is NOT required.
-#
-# Lines starting with # and blank lines are ignored. Quoted values are unquoted.
-# Each KEY=VALUE pair becomes a repository secret named KEY.
+# Requirements: gh CLI authenticated with `repo` scope.
 
 set -euo pipefail
 
@@ -22,13 +19,12 @@ while [[ $# -gt 0 ]]; do
     --repo) REPO="$2"; shift 2 ;;
     --env) ENV_FILE="$2"; shift 2 ;;
     -h|--help)
-      sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 
-# Locate .env relative to repo root if not given explicitly.
 if [[ -z "$ENV_FILE" ]]; then
   ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
   ENV_FILE="$ROOT/.env"
@@ -45,41 +41,13 @@ if ! command -v gh >/dev/null 2>&1; then
 fi
 
 REPO_FLAG=()
-if [[ -n "$REPO" ]]; then
-  REPO_FLAG=(--repo "$REPO")
+[[ -n "$REPO" ]] && REPO_FLAG=(--repo "$REPO")
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "[dry-run] would set the following secrets from $ENV_FILE:"
+  grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_FILE" | cut -d= -f1 | sed 's/^/  /'
+  exit 0
 fi
 
-count=0
-while IFS= read -r raw || [[ -n "$raw" ]]; do
-  # strip leading/trailing whitespace
-  line="${raw#"${raw%%[![:space:]]*}"}"
-  line="${line%"${line##*[![:space:]]}"}"
-  [[ -z "$line" ]] && continue
-  [[ "$line" == \#* ]] && continue
-
-  key="${line%%=*}"
-  val="${line#*=}"
-
-  # validate key shape
-  if ! [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-    echo "skip: invalid secret name '$key'" >&2
-    continue
-  fi
-
-  # strip a single matching pair of surrounding quotes
-  if [[ "$val" =~ ^\".*\"$ ]] || [[ "$val" =~ ^\'.*\'$ ]]; then
-    val="${val:1:${#val}-2}"
-  fi
-
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    masked="****"
-    [[ ${#val} -gt 0 ]] && masked="**** (${#val} chars)"
-    echo "[dry-run] would set $key=$masked"
-  else
-    printf '%s' "$val" | gh secret set "$key" "${REPO_FLAG[@]}"
-    echo "set: $key"
-  fi
-  count=$((count + 1))
-done < "$ENV_FILE"
-
-echo "done. ${count} secret(s) processed from $ENV_FILE"
+gh secret set -f "$ENV_FILE" "${REPO_FLAG[@]}"
+echo "done. secrets synced from $ENV_FILE"
