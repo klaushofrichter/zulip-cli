@@ -246,4 +246,15 @@ This list is not exhaustive. See the upstream API reference for the full surface
 
 ## License
 
-No license declared. Add one before publishing.
+MIT — see [LICENSE](./LICENSE).
+
+## No warranty
+
+This software is provided **"as is", without warranty of any kind**, express or implied. The authors and contributors are not liable for any damages, data loss, accidental messages sent, leaked credentials, or other consequences arising from its use. You are solely responsible for:
+
+- protecting your `.env` credentials and any GitHub Actions secrets you upload,
+- reviewing what the CLI does before running write operations against a real Zulip server,
+- understanding that posting, DMing, reacting, uploading, and changing your status are user-visible actions that may be hard to reverse,
+- complying with your organization's policies on automated access to internal communication systems.
+
+Use at your own risk.
