@@ -7,7 +7,7 @@ A small, zero-dependency TypeScript CLI for Zulip, designed to be driven by Clau
 - Node.js 23.6+ (runs `.ts` files directly via native type stripping). Tested on Node 25.
 - A Zulip account with an API key.
 
-No `npm install` is needed — the CLI uses only Node built-ins (`fetch`, `node:util`, `node:fs`).
+No `npm install` is needed — the CLI uses only Node built-ins (`fetch`, `node:util`, `node:fs`, `node:path`, `node:url`).
 
 ## Setup
 
@@ -47,77 +47,19 @@ Top-level command groups:
 
 All output is JSON. Add `--pretty` for indented output when reading by eye.
 
-### Examples
-
-List streams:
+### Quick examples
 
 ```bash
 zulip channels list --pretty
-```
-
-Send a message to a stream/topic:
-
-```bash
 zulip messages send "general" "deploys" --content "Deploy complete"
-```
-
-Send a direct message:
-
-```bash
-zulip messages dm --to "alice@example.com,bob@example.com" --content "Hi!"
-```
-
-Read the last 10 messages from a topic:
-
-```bash
 zulip messages history "general" "release-notes" --limit 10 --pretty
-```
-
-React to a message:
-
-```bash
-zulip messages react 123456789 thumbs_up
-```
-
-List users:
-
-```bash
-zulip users list
-```
-
-Look up a single user, or get the stream id for a name:
-
-```bash
-zulip users get alice@example.com
-zulip channels resolve "general"
-```
-
-Search messages by sender + text:
-
-```bash
 zulip messages search --sender "alice@example.com" --text "deploy" --limit 20
+zulip users get alice@example.com
 ```
 
-Upload a file and post it:
+For complete recipes (uploading and embedding files, setting status, DMs, etc.) see [SKILL.md](./SKILL.md#recipes). Run `zulip --help` for the full command reference.
 
-```bash
-URI=$(zulip messages upload ./graph.png | jq -r .uri)
-zulip messages send "general" "metrics" --content "Latest: [graph]($URI)"
-```
-
-Set or clear your status:
-
-```bash
-zulip users status --text "in a meeting" --emoji calendar
-zulip users status --text "" --emoji "" --present
-```
-
-Get presence for one user (or the whole realm if omitted):
-
-```bash
-zulip users presence alice@example.com
-zulip users presence
-```
+Set `DEBUG=1` in the environment to print stack traces on unexpected errors.
 
 ## Files
 
@@ -164,7 +106,7 @@ The job `read-only-tests` exercises the CLI against the configured Zulip server 
 Runs on push to `release` (i.e., after a merge) and on manual dispatch. Steps:
 
 1. Smoke-test that `node zulip.ts --help` exits cleanly.
-2. `npm pack` to produce a tarball of the files listed in `package.json` (`zulip.ts`, `SKILL.md`, `README.md`).
+2. `npm pack` to produce a tarball of the files listed in `package.json` (`zulip.ts`, `SKILL.md`, `README.md`, `LICENSE`).
 3. Create a GitHub Release tagged `v<version>-<UTC-timestamp>-<short-sha>` with the tarball attached.
 
 Releases appear on the repository's Releases page. There is no npm-registry publish step — the artifact is the GitHub Release tarball.
