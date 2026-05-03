@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [release]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-tests:
+    name: read-only-tests
+    runs-on: ubuntu-latest
+    env:
+      ZULIP_DOMAIN: ${{ secrets.ZULIP_DOMAIN }}
+      ZULIP_USER_EMAIL: ${{ secrets.ZULIP_USER_EMAIL }}
+      ZULIP_USER_API_KEY: ${{ secrets.ZULIP_USER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Verify secrets are present
+        run: |
+          set -e
+          : "${ZULIP_DOMAIN:?missing}"
+          : "${ZULIP_USER_EMAIL:?missing}"
+          : "${ZULIP_USER_API_KEY:?missing}"
+          echo "secrets ok (domain length: ${#ZULIP_DOMAIN})"
+
+      - name: --help exits 0
+        run: node zulip.ts --help >/dev/null
+
+      - name: users list returns members
+        run: |
+          node zulip.ts users list > out.json
+          node -e '
+            const j = JSON.parse(require("fs").readFileSync("out.json","utf8"));
+            if (j.result !== "success") { console.error(j); process.exit(1); }
+            if (!Array.isArray(j.members) || j.members.length === 0) { console.error("no members"); process.exit(1); }
+            console.log("members:", j.members.length);
+          '
+
+      - name: users get (self) returns the configured user
+        run: |
+          node zulip.ts users get "$ZULIP_USER_EMAIL" > out.json
+          node -e '
+            const j = JSON.parse(require("fs").readFileSync("out.json","utf8"));
+            if (j.result !== "success") { console.error(j); process.exit(1); }
+            if (j.user.delivery_email !== process.env.ZULIP_USER_EMAIL) {
+              console.error("email mismatch:", j.user.delivery_email);
+              process.exit(1);
+            }
+            console.log("user_id:", j.user.user_id);
+          '
+
+      - name: users presence (self)
+        run: |
+          node zulip.ts users presence "$ZULIP_USER_EMAIL" > out.json
+          node -e '
+            const j = JSON.parse(require("fs").readFileSync("out.json","utf8"));
+            if (j.result !== "success") { console.error(j); process.exit(1); }
+            if (!j.presence) { console.error("no presence"); process.exit(1); }
+          '
+
+      - name: channels list returns streams (and pick one)
+        id: pick
+        run: |
+          node zulip.ts channels list > streams.json
+          node -e '
+            const fs = require("fs");
+            const j = JSON.parse(fs.readFileSync("streams.json","utf8"));
+            if (j.result !== "success") { console.error(j); process.exit(1); }
+            if (!Array.isArray(j.streams) || j.streams.length === 0) { console.error("no streams"); process.exit(1); }
+            const s = j.streams[0];
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `name=${s.name}\nid=${s.stream_id}\n`);
+            console.log("picked:", s.stream_id, s.name);
+          '
+
+      - name: channels resolve matches the picked id
+        run: |
+          node zulip.ts channels resolve "${{ steps.pick.outputs.name }}" > out.json
+          node -e '
+            const j = JSON.parse(require("fs").readFileSync("out.json","utf8"));
+            const want = parseInt(process.env.WANT_ID, 10);
+            if (j.result !== "success" || j.stream_id !== want) {
+              console.error("got", j, "want id", want);
+              process.exit(1);
+            }
+          '
+        env:
+          WANT_ID: ${{ steps.pick.outputs.id }}
+
+      - name: channels topics on picked stream
+        run: |
+          node zulip.ts channels topics "${{ steps.pick.outputs.id }}" > out.json
+          node -e '
+            const j = JSON.parse(require("fs").readFileSync("out.json","utf8"));
+            if (j.result !== "success") { console.error(j); process.exit(1); }
+            if (!Array.isArray(j.topics)) { console.error("no topics array"); process.exit(1); }
+            console.log("topics:", j.topics.length);
+          '
+
+      - name: messages search by sender (self)
+        run: |
+          node zulip.ts messages search --sender "$ZULIP_USER_EMAIL" --limit 1 > out.json
+          node -e '
+            const j = JSON.parse(require("fs").readFileSync("out.json","utf8"));
+            if (j.result !== "success") { console.error(j); process.exit(1); }
+            if (!Array.isArray(j.messages)) { console.error("no messages array"); process.exit(1); }
+          '
