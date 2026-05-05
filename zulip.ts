@@ -118,6 +118,11 @@ function out(data: Json, pretty: boolean): void {
   process.stdout.write(JSON.stringify(data, null, pretty ? 2 : 0) + "\n");
 }
 
+async function resolveChannelId(name: string): Promise<number> {
+  const data = (await api("GET", "/get_stream_id", { stream: name })) as { stream_id: number };
+  return data.stream_id;
+}
+
 function die(msg: string): never {
   process.stderr.write(`error: ${msg}\n`);
   process.exit(1);
@@ -146,6 +151,10 @@ messages
          [--text TXT] [--has link|image|attachment|reaction]
          [--is private|mentioned|starred|unread|resolved]
          [--limit N] [--anchor X] [--num-after N]   Generic message search
+  mark-read <id> [<id>...]                         Mark specific messages as read
+  mark-read --channel <name> [--topic <name>]      Mark a channel (or one topic) as read
+  mark-read --all                                  Mark everything as read
+  mark-unread <id> [<id>...]                       Mark specific messages as unread
 
 users
   list                              List users in the organization
@@ -342,6 +351,65 @@ async function main(): Promise<void> {
       apply_markdown: false,
     });
     out(data, pretty);
+    return;
+  }
+
+  if (group === "messages" && cmd === "mark-read") {
+    const { values, positionals } = parseArgs({
+      args: rest,
+      options: {
+        channel: { type: "string" },
+        topic: { type: "string" },
+        all: { type: "boolean", default: false },
+      },
+      allowPositionals: true,
+      strict: true,
+    });
+    const modes = [positionals.length > 0, !!values.channel, values.all].filter(Boolean).length;
+    if (modes !== 1) {
+      die("messages mark-read: pass either <id>... OR --channel <name> [--topic <name>] OR --all");
+    }
+    if (values.topic && !values.channel) die("messages mark-read: --topic requires --channel");
+
+    if (values.all) {
+      out(await api("POST", "/mark_all_as_read"), pretty);
+      return;
+    }
+    if (values.channel) {
+      const streamId = await resolveChannelId(values.channel);
+      const data = values.topic
+        ? await api("POST", "/mark_topic_as_read", { stream_id: streamId, topic_name: values.topic })
+        : await api("POST", "/mark_stream_as_read", { stream_id: streamId });
+      out(data, pretty);
+      return;
+    }
+    for (const id of positionals) {
+      if (!isNumericId(id)) die(`messages mark-read: <id> must be numeric (got "${id}")`);
+    }
+    out(
+      await api("POST", "/messages/flags", {
+        messages: JSON.stringify(positionals.map(Number)),
+        op: "add",
+        flag: "read",
+      }),
+      pretty,
+    );
+    return;
+  }
+
+  if (group === "messages" && cmd === "mark-unread") {
+    if (rest.length === 0) die("messages mark-unread: missing <id>");
+    for (const id of rest) {
+      if (!isNumericId(id)) die(`messages mark-unread: <id> must be numeric (got "${id}")`);
+    }
+    out(
+      await api("POST", "/messages/flags", {
+        messages: JSON.stringify(rest.map(Number)),
+        op: "remove",
+        flag: "read",
+      }),
+      pretty,
+    );
     return;
   }
 

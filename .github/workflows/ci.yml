@@ -110,3 +110,18 @@ jobs:
             const j = JSON.parse(require("fs").readFileSync("out.json","utf8"));
             if (!Array.isArray(j.messages)) { console.error("no messages array"); process.exit(1); }
           '
+
+      - name: mark-read / mark-unread argument validation (no API call)
+        run: |
+          set +e
+          node zulip.ts messages mark-read; rc=$?
+          [ "$rc" = "1" ] || { echo "expected exit 1 with no args, got $rc"; exit 1; }
+          node zulip.ts messages mark-read --topic foo; rc=$?
+          [ "$rc" = "1" ] || { echo "expected exit 1 for --topic without --channel, got $rc"; exit 1; }
+          node zulip.ts messages mark-read 123 --all; rc=$?
+          [ "$rc" = "1" ] || { echo "expected exit 1 for combined modes, got $rc"; exit 1; }
+          node zulip.ts messages mark-read abc; rc=$?
+          [ "$rc" = "1" ] || { echo "expected exit 1 for non-numeric id, got $rc"; exit 1; }
+          node zulip.ts messages mark-unread; rc=$?
+          [ "$rc" = "1" ] || { echo "expected exit 1 for mark-unread no args, got $rc"; exit 1; }
+          echo "all mark-read/mark-unread validation cases ok"
