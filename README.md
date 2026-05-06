@@ -42,7 +42,7 @@ Top-level command groups:
 | Group     | Commands                                                              |
 |-----------|-----------------------------------------------------------------------|
 | channels  | `list`, `subscribe`, `topics`, `resolve`                              |
-| messages  | `send`, `dm`, `history`, `react`, `upload`, `search`                  |
+| messages  | `send`, `dm`, `history`, `react`, `upload`, `search`, `mark-read`, `mark-unread` |
 | users     | `list`, `get`, `status`, `presence`                                   |
 
 All output is JSON. Add `--pretty` for indented output when reading by eye.
@@ -150,7 +150,7 @@ Reference: <https://zulip.com/api/>.
 - `DELETE /messages/{id}` — delete a message
 - `GET /messages/{id}` — fetch a single message
 - `GET /messages/{id}/history` — edit history
-- `POST /messages/flags` — mark read/unread, star/unstar
+- `POST /messages/flags` for flags other than `read` (e.g. `starred`, `collapsed`) — only the `read` flag is wired up via `mark-read`/`mark-unread`
 - `DELETE /messages/{id}/reactions` — remove a reaction (only adding is supported)
 - `POST /messages/render` — render Markdown without sending
 
@@ -164,7 +164,6 @@ Reference: <https://zulip.com/api/>.
 
 **Topics**
 - `POST /user_topics` (and legacy `/users/me/subscriptions/muted_topics`) — mute, unmute, mark resolved
-- `POST /mark_topic_as_read`, `/mark_stream_as_read`, `/mark_all_as_read`
 - `DELETE /streams/{id}/delete_topic`
 
 **Users / groups**

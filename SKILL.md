@@ -46,11 +46,17 @@ zulip messages search [--channel C] [--topic T] [--sender S]
                       [--text TXT] [--has link|image|attachment|reaction]
                       [--is private|mentioned|starred|unread|resolved]
                       [--limit 20] [--anchor newest] [--num-after 0]
+zulip messages mark-read <id> [<id>...]            # mark specific messages read
+zulip messages mark-read --channel <name> [--topic <name>]   # bulk: channel or one topic
+zulip messages mark-read --all                     # bulk: everything
+zulip messages mark-unread <id> [<id>...]          # remove the read flag
 ```
 
 - `messages history` is a thin wrapper for stream+topic. Use `messages search` for anything else (sender, full-text, has-link, etc.). At least one filter is required.
 - `messages upload` returns a `uri` like `/user_uploads/.../foo.png`. Embed it in a message via Markdown: `[caption](/user_uploads/...)`.
 - `--has` and `--is` may be repeated to combine filters.
+- `mark-read --channel <name>` resolves the channel name to its id internally (one extra round-trip). Pass exactly one of `<id>...` / `--channel` / `--all` — they are mutually exclusive. There is no bulk-unread; `mark-unread` only takes message ids.
+- `mark-read` and `mark-unread` mutate your read state; treat them like other write operations and confirm before running unattended (especially `--all`).
 
 ### Users
 
@@ -96,6 +102,12 @@ zulip messages send "general" "metrics" --content "Latest: [graph]($URI)"
 
 **Set status:**
 `zulip users status --text "in a meeting" --emoji calendar`
+
+**Catch up on a topic:**
+`zulip messages mark-read --channel "general" --topic "release-notes"`
+
+**Mark a single message unread (re-surface in the UI):**
+`zulip messages mark-unread 123456789`
 
 ## Notes for the agent
 
